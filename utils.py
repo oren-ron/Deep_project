@@ -1,11 +1,12 @@
 import torch
 import numpy as np
 from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
 
 def plot_tsne(model, dataloader, device):
     '''
     model - torch.nn.Module subclass. This is your encoder model
-    dataloader - test dataloader to over over data for which you wish to compute projections
+    dataloader - test dataloader to iterate over data for which you wish to compute projections
     device - cuda or cpu (as a string)
     '''
     model.eval()
@@ -18,10 +19,10 @@ def plot_tsne(model, dataloader, device):
         for data in dataloader:
             images, labels = data
             images, labels = images.to(device), labels.to(device)
-            
-            #approximate the latent space from data
-            latent_vector = model(images)
-            
+            # Flatten the images before passing to the encoder
+            flattened_images = images.view(images.size(0), -1)
+            # Approximate the latent space from data
+            latent_vector = model(flattened_images)            
             images_list.append(images.cpu().numpy())
             labels_list.append(labels.cpu().numpy())
             latent_list.append(latent_vector.cpu().numpy())
@@ -29,6 +30,10 @@ def plot_tsne(model, dataloader, device):
     images = np.concatenate(images_list, axis=0)
     labels = np.concatenate(labels_list, axis=0)
     latent_vectors = np.concatenate(latent_list, axis=0)
+        
+    # Flatten latent vectors if they have more than 2 dimensions
+    if len(latent_vectors.shape) > 2:
+        latent_vectors = latent_vectors.reshape(latent_vectors.shape[0], -1)
     
     # Plot TSNE for latent space
     tsne_latent = TSNE(n_components=2, random_state=0)
@@ -41,7 +46,7 @@ def plot_tsne(model, dataloader, device):
     plt.savefig('latent_tsne.png')
     plt.close()
     
-    #plot image domain tsne
+    # Plot TSNE for image space
     tsne_image = TSNE(n_components=2, random_state=42)
     images_flattened = images.reshape(images.shape[0], -1)
     image_tsne = tsne_image.fit_transform(images_flattened)
