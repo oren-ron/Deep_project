@@ -11,6 +11,7 @@ data/MNIST/raw/train-labels-idx1-ubyte.gz
 0.11.0
 .gitignore
 data/*
+__pycache__/*
 checkpoints/CIFAR10/ae_best.pth
 checkpoints/CIFAR10/cls_best.pth
 checkpoints/MNIST/ae_best.pth

@@ -19,10 +19,11 @@ def plot_tsne(model, dataloader, device):
         for data in dataloader:
             images, labels = data
             images, labels = images.to(device), labels.to(device)
-            # Flatten the images before passing to the encoder
-            flattened_images = images.view(images.size(0), -1)
-            # Approximate the latent space from data
-            latent_vector = model(flattened_images)            
+            # # Flatten the images before passing to the encoder
+            # flattened_images = images.view(images.size(0), -1)
+            # # Approximate the latent space from data
+            # latent_vector = model(flattened_images)            
+            latent_vector = model(images)
             images_list.append(images.cpu().numpy())
             labels_list.append(labels.cpu().numpy())
             latent_list.append(latent_vector.cpu().numpy())
