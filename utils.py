@@ -48,13 +48,62 @@ def plot_tsne(model, dataloader, device):
     plt.close()
     
     # Plot TSNE for image space
-    tsne_image = TSNE(n_components=2, random_state=42)
-    images_flattened = images.reshape(images.shape[0], -1)
-    image_tsne = tsne_image.fit_transform(images_flattened)
+    # tsne_image = TSNE(n_components=2, random_state=42)
+    # images_flattened = images.reshape(images.shape[0], -1)
+    # image_tsne = tsne_image.fit_transform(images_flattened)
     
-    plt.figure(figsize=(8, 6))
-    scatter = plt.scatter(image_tsne[:, 0], image_tsne[:, 1], c=labels, cmap='tab10', s=10)  
-    plt.colorbar(scatter)
-    plt.title('t-SNE of Image Space')
-    plt.savefig('image_tsne.png')
-    plt.close()
+    # plt.figure(figsize=(8, 6))
+    # scatter = plt.scatter(image_tsne[:, 0], image_tsne[:, 1], c=labels, cmap='tab10', s=10)  
+    # plt.colorbar(scatter)
+    # plt.title('t-SNE of Image Space')
+    # plt.savefig('image_tsne.png')
+    # plt.close()
+
+def plot_tsne_simclr(model, dataloader, device, use_projection=True):
+        model.eval()
+        
+        images_list = []
+        labels_list = []
+        latent_list = []
+        
+        with torch.no_grad():
+            for data in dataloader:
+                # Handle SimCLR data format (views, labels)
+                if isinstance(data[0], tuple):
+                    views, labels = data
+                    images = views[0]  # Use only first view
+                else:
+                    images, labels = data
+                    
+                images, labels = images.to(device), labels.to(device)
+                
+                # For SimCLR model
+                z = model.encode(images)
+                if use_projection:
+                    # Use projected features (what's used in contrastive loss)
+                    latent_vector = model.projection(z)
+                else:
+                    # Use raw latent representation
+                    latent_vector = z
+                    
+                images_list.append(images.cpu().numpy())
+                labels_list.append(labels.cpu().numpy())
+                latent_list.append(latent_vector.cpu().numpy())
+        
+        # Rest of the function remains the same
+        images = np.concatenate(images_list, axis=0)
+        labels = np.concatenate(labels_list, axis=0)
+        latent_vectors = np.concatenate(latent_list, axis=0)
+        
+        if len(latent_vectors.shape) > 2:
+            latent_vectors = latent_vectors.reshape(latent_vectors.shape[0], -1)
+        
+        tsne_latent = TSNE(n_components=2, random_state=0)
+        latent_tsne = tsne_latent.fit_transform(latent_vectors)
+        
+        plt.figure(figsize=(8, 6))
+        scatter = plt.scatter(latent_tsne[:, 0], latent_tsne[:, 1], c=labels, cmap='tab10', s=10)
+        plt.colorbar(scatter)
+        plt.title('t-SNE of SimCLR Latent Space')
+        plt.savefig('simclr_latent_tsne.png')
+        plt.show()
