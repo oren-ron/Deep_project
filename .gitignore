@@ -73,3 +73,5 @@ results/subtask123/CIFAR/best_simclr_modelverylowLOSS.pth
 results/subtask123/CIFAR/paper/resnet/best_model_paper_final.pth
 results/subtask123/MNIST/best_classifier_new_mnist_final.pth
 results/subtask123/MNIST/best_model_paper_mnist.pth
+best_model_paper_mnist.pth
+__pycache__/utils.cpython-310.pyc

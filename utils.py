@@ -2,6 +2,9 @@ import torch
 import numpy as np
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader, random_split, Dataset
+from torchvision import datasets, transforms
+import random
 
 def plot_tsne(model, dataloader, device):
     '''
@@ -107,3 +110,156 @@ def plot_tsne_simclr(model, dataloader, device, use_projection=True):
         plt.title('t-SNE of SimCLR Latent Space')
         plt.savefig('simclr_latent_tsne.png')
         plt.show()
+
+
+mean_mnist, std_mnist = (0.1307,), (0.3081,)
+mean_cifar, std_cifar = (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+config = {
+    'MNIST': {
+        'input_channels': 1,
+        'input_size': 28,
+        'num_classes': 10,
+        'train_transform': {
+            '1': transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean_mnist, std_mnist)
+            ]),
+            '2': transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean_mnist, std_mnist)
+            ]),
+            '3': transforms.Compose([
+                transforms.RandomCrop(28, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(15),
+                transforms.RandomAffine(0, shear=10),
+                transforms.ToTensor(),
+                transforms.Normalize(mean_mnist, std_mnist) 
+            ])
+        },
+        'val_transform': transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean_mnist, std_mnist)
+            ]),
+        'ae_epochs': {
+            '1': 10,
+            '2': 10,
+            '3': 15
+        },
+        'cls_epochs': {
+            '1': 20,
+            '2': 20,
+            '3': 15
+        }
+    },
+    'CIFAR10': {
+        'input_channels': 3,
+        'input_size': 32,
+        'num_classes': 10,
+        'train_transform': {
+            '1': transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean_cifar, std_cifar)
+            ]),
+            '2': transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize(mean_cifar, std_cifar)
+            ]),
+            '3': transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(15),
+                transforms.RandomAffine(0, shear=10),
+                transforms.ToTensor(),
+                transforms.Normalize(mean_cifar, std_cifar)
+            ])
+        },
+        'val_transform': 
+            transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize(mean_cifar, std_cifar)
+            ]),
+        'ae_epochs': {
+            '1': 30,
+            '2': 30,
+            '3': 15
+        },
+        'cls_epochs': {
+            '1': 25,
+            '2': 20,
+            '3': 15
+        }
+    }
+}
+
+
+
+class MemoryDataset(Dataset):
+    def __init__(self, dataset):
+        self.data = [dataset[i] for i in range(len(dataset))]
+    def __len__(self):
+        return len(self.data)
+    def __getitem__(self, idx):
+        return self.data[idx]
+
+def load_dataset(dataset_name, subtask_id, path):
+    cfg = config[dataset_name]
+    print("Loading datasets to memory, please wait... (up to 3 minutes for cifar)")
+    if dataset_name == 'MNIST':
+        try:
+            train_dataset = datasets.MNIST(root=path, train=True, download=False, transform=cfg['train_transform'][subtask_id])
+            train_dataset = MemoryDataset(train_dataset)
+            test_dataset = datasets.MNIST(root=path, train=False, download=False, transform=cfg['val_transform'])
+            test_dataset = MemoryDataset(test_dataset)
+        except Exception as e:
+            print("Didn't find MNIST dataset so downloading...")
+            train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=cfg['train_transform'][subtask_id])
+            train_dataset = MemoryDataset(train_dataset)
+            test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=cfg['val_transform'])
+            test_dataset = MemoryDataset(test_dataset)
+            path = './data'
+    else:
+        try:
+            train_dataset = datasets.CIFAR10(root=path, train=True, download=False, transform=cfg['train_transform'][subtask_id])
+            train_dataset = MemoryDataset(train_dataset)
+            test_dataset = datasets.CIFAR10(root=path, train=False, download=False, transform=cfg['val_transform'])
+            test_dataset = MemoryDataset(test_dataset)
+        except Exception as e:
+            print("Didn't find CIFAR10 dataset so downloading...")
+            train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=cfg['train_transform'][subtask_id])
+            train_dataset = MemoryDataset(train_dataset)
+            test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=cfg['val_transform'])
+            test_dataset = MemoryDataset(test_dataset)
+            path = './data'
+    
+
+    train_size = len(train_dataset) - 10000
+    train_dataset, val_dataset = random_split(train_dataset, [train_size, 10000])
+    val_dataset.dataset.transform = cfg['val_transform']
+    print("Finished loading to memory")
+    return train_dataset, val_dataset, test_dataset
+
+def create_data_loaders(train_dataset, val_dataset, test_dataset, batch_size):
+    return (
+        DataLoader(train_dataset, batch_size=batch_size, shuffle=True),
+        DataLoader(val_dataset, batch_size=batch_size, shuffle=False),
+        DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    )
+
+def plot_losses(train_losses, val_losses, title, objective='loss'):
+    plt.figure()
+    plt.plot(train_losses, label=f'Train {objective}')
+    plt.plot(val_losses, label=f'Validation {objective}')
+    plt.xlabel('Epoch')
+    plt.ylabel(f'{objective.capitalize()}')
+    plt.title(title)
+    plt.legend()
+    plt.show()
+
+def freeze_seeds(seed=0):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
