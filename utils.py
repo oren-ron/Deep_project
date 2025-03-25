@@ -162,8 +162,6 @@ config = {
                 transforms.Normalize(mean_cifar, std_cifar)
             ]),
             '2': transforms.Compose([
-                transforms.RandomCrop(32, padding=4),
-                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize(mean_cifar, std_cifar)
             ]),
@@ -173,18 +171,19 @@ config = {
                 transforms.RandomRotation(15),
                 transforms.RandomAffine(0, shear=10),
                 transforms.ToTensor(),
-                transforms.Normalize(mean_cifar, std_cifar)
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
             ])
         },
         'val_transform': 
             transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize(mean_cifar, std_cifar)
+                # transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
             ]),
         'ae_epochs': {
             '1': 30,
             '2': 30,
-            '3': 15
+            '3': 12
         },
         'cls_epochs': {
             '1': 25,
@@ -206,16 +205,17 @@ class MemoryDataset(Dataset):
 
 def load_dataset(dataset_name, subtask_id, path):
     cfg = config[dataset_name]
-    print("Loading datasets to memory, please wait... (up to 3 minutes for cifar)")
     if dataset_name == 'MNIST':
         try:
             train_dataset = datasets.MNIST(root=path, train=True, download=False, transform=cfg['train_transform'][subtask_id])
+            print("Loading datasets to memory, please wait... (up to 3 minutes for cifar)")
             train_dataset = MemoryDataset(train_dataset)
             test_dataset = datasets.MNIST(root=path, train=False, download=False, transform=cfg['val_transform'])
             test_dataset = MemoryDataset(test_dataset)
         except Exception as e:
             print("Didn't find MNIST dataset so downloading...")
             train_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=cfg['train_transform'][subtask_id])
+            print("Loading datasets to memory, please wait... (up to 3 minutes for cifar)")
             train_dataset = MemoryDataset(train_dataset)
             test_dataset = datasets.MNIST(root='./data', train=False, download=True, transform=cfg['val_transform'])
             test_dataset = MemoryDataset(test_dataset)
@@ -223,12 +223,15 @@ def load_dataset(dataset_name, subtask_id, path):
     else:
         try:
             train_dataset = datasets.CIFAR10(root=path, train=True, download=False, transform=cfg['train_transform'][subtask_id])
+            print("Loading datasets to memory, please wait... (up to 3 minutes for cifar)")
+
             train_dataset = MemoryDataset(train_dataset)
             test_dataset = datasets.CIFAR10(root=path, train=False, download=False, transform=cfg['val_transform'])
             test_dataset = MemoryDataset(test_dataset)
         except Exception as e:
             print("Didn't find CIFAR10 dataset so downloading...")
             train_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=cfg['train_transform'][subtask_id])
+            print("Loading datasets to memory, please wait... (up to 3 minutes for cifar)")
             train_dataset = MemoryDataset(train_dataset)
             test_dataset = datasets.CIFAR10(root='./data', train=False, download=True, transform=cfg['val_transform'])
             test_dataset = MemoryDataset(test_dataset)
