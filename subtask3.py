@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, random_split, Dataset, TensorDataset
 from tqdm import tqdm
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import os
 import random
@@ -24,7 +26,60 @@ def get_args():
     return parser.parse_args()
 
 
-class Autoencoder(nn.Module):
+
+class MNISTAutoencoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(1, 32, 3, 1, 1), 
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2), 
+
+            nn.Conv2d(32, 64, 3, 1, 1), 
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+
+            nn.Conv2d(64, 128, 3, 1, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
+        
+        self.projection = nn.Sequential(
+            nn.Linear(1152, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Linear(256, 128)
+        )
+
+        self.decoder_fc = nn.Linear(1152, 128 * 3 * 3)
+        self.decoder_conv = nn.Sequential(
+            nn.ConvTranspose2d(128, 64, 3, 2, 0),  
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.ConvTranspose2d(64, 32, 2, 2, 0),  
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, 1, 2, 2, 0),  
+            nn.Sigmoid()
+            )
+
+    def forward(self, x):
+        encoded = self.encoder(x)
+        flat = encoded.view(encoded.size(0), -1)
+        projected = F.normalize(self.projection(flat), p=2, dim=1)
+        x_recon = self.decoder_fc(flat)
+        x_recon = x_recon.view(-1, 128, 3, 3)
+        reconstruction = self.decoder_conv(x_recon)
+        return reconstruction, projected
+
+
+
+
+
+class CifarAutoencoder(nn.Module):
     def __init__(self):
         super().__init__()
         self.encoder = nn.Sequential(
@@ -134,46 +189,44 @@ class Classifier(nn.Module):
         return x
 
 
+
 def plot_original_vs_reconstructed_with_error(model, data_loader, device):
-    model.eval()  # Set the model to evaluation mode
+    model.eval() 
     with torch.no_grad():
-        # Get a batch of data
+
         for inputs, _ in data_loader:
             inputs = inputs.to(device)
-            # Pass the inputs through the model
-            reconstructed, _ = model(inputs)
-            break  # Only process one batch
 
-    # Compute reconstruction errors
-    reconstruction_errors = F.mse_loss(reconstructed, inputs, reduction='none')  # Element-wise MSE
-    reconstruction_errors = reconstruction_errors.view(reconstruction_errors.size(0), -1).mean(dim=1)  # Per-sample MSE
-    mean_error = reconstruction_errors.mean().item()  # Compute the mean reconstruction error
+            reconstructed, _ = model(inputs)
+            break  
+
+
+    reconstruction_errors = F.mse_loss(reconstructed, inputs, reduction='none')  
+    reconstruction_errors = reconstruction_errors.view(reconstruction_errors.size(0), -1).mean(dim=1) 
+    mean_error = reconstruction_errors.mean().item() 
 
     print(f"Mean Reconstruction Error: {mean_error:.6f}")
 
-    # Move tensors to CPU for plotting
+
     inputs = inputs.cpu().numpy()
     reconstructed = reconstructed.cpu().numpy()
 
-    # Denormalize the images (if normalized during preprocessing)
-    inputs = np.transpose(inputs, (0, 2, 3, 1))  # Convert to HWC format
-    reconstructed = np.transpose(reconstructed, (0, 2, 3, 1))  # Convert to HWC format
+    inputs = np.transpose(inputs, (0, 2, 3, 1))
+    reconstructed = np.transpose(reconstructed, (0, 2, 3, 1))
 
-    # # Plot original and reconstructed images
-    # fig, axes = plt.subplots(2, 5, figsize=(15, 6))  # 2 rows, 5 columns
-    # for i in range(5):
-    #     # Original image
-    #     axes[0, i].imshow(np.clip(inputs[i], 0, 1))  # Clip values to [0, 1] for display
-    #     axes[0, i].set_title("Original")
-    #     axes[0, i].axis('off')
-
-    #     # Reconstructed image
-    #     axes[1, i].imshow(np.clip(reconstructed[i], 0, 1))  # Clip values to [0, 1] for display
-    #     axes[1, i].set_title("Reconstructed")
-    #     axes[1, i].axis('off')
-
-    # plt.tight_layout()
-    # plt.show()
+    # Plot original and reconstructed images
+    fig, axes = plt.subplots(2, 5, figsize=(15, 6))  # 2 rows, 5 columns
+    for i in range(5):
+        # Original image
+        axes[0, i].imshow(np.clip(inputs[i], 0, 1))  # Clip values to [0, 1] for display
+        axes[0, i].set_title("Original")
+        axes[0, i].axis('off')
+       # Reconstructed image
+        axes[1, i].imshow(np.clip(reconstructed[i], 0, 1))  # Clip values to [0, 1] for display
+        axes[1, i].set_title("Reconstructed")
+        axes[1, i].axis('off')
+    plt.tight_layout()
+    plt.show()
 
 
 def extract_latent(loader, model, device):
@@ -193,68 +246,67 @@ def extract_latent(loader, model, device):
 
 
 
-def main(train_loader, val_loader, test_loader):
-    model = Autoencoder().to(device)
-    supcon_criterion = SupConLoss(temperature=0.07)
+def main(train_loader, val_loader, test_loader, mnist):
+
+    model = MNISTAutoencoder().to(device) if mnist else CifarAutoencoder().to(device)
+    supcon_criterion = SupConLoss(temperature=0.2)
     recon_criterion = nn.MSELoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.0022, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
 
     num_epochs = cfg['ae_epochs'][subtask_id]
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=6, verbose=True)
-    contrastive_weight = 0.5 
-    print("starting encoder training")
-    best_val_loss = float('inf')
-    for epoch in range(num_epochs):
+    contrastive_weight = 0.8 
+    # print("starting encoder training")
+    # best_val_loss = float('inf')
+    # for epoch in range(num_epochs):
 
-        model.train()
-        train_loss = 0.0
-        for inputs, labels in train_loader:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+    #     model.train()
+    #     train_loss = 0.0
+    #     for inputs, labels in train_loader:
+    #         inputs = inputs.to(device)
+    #         labels = labels.to(device)
             
 
-            reconstructions, projections = model(inputs)
-            recon_loss = recon_criterion(reconstructions, inputs)
-            supcon_loss = supcon_criterion(projections, labels)
-            total_loss = (1 - contrastive_weight) * recon_loss + contrastive_weight * supcon_loss
+    #         reconstructions, projections = model(inputs)
+    #         recon_loss = recon_criterion(reconstructions, inputs)
+    #         supcon_loss = supcon_criterion(projections, labels)
+    #         total_loss = (1 - contrastive_weight) * recon_loss + contrastive_weight * supcon_loss
             
 
-            optimizer.zero_grad()
-            total_loss.backward()
-            optimizer.step()
-            train_loss += total_loss.item()
+    #         optimizer.zero_grad()
+    #         total_loss.backward()
+    #         optimizer.step()
+    #         train_loss += total_loss.item()
         
 
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for inputs, labels in val_loader:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+    #     model.eval()
+    #     val_loss = 0.0
+    #     with torch.no_grad():
+    #         for inputs, labels in val_loader:
+    #             inputs = inputs.to(device)
+    #             labels = labels.to(device)
                 
-                reconstructions, projections = model(inputs)
-                recon_loss = recon_criterion(reconstructions, inputs)
-                supcon_loss = supcon_criterion(projections, labels)
-                total_loss = recon_loss + contrastive_weight * supcon_loss
+    #             reconstructions, projections = model(inputs)
+    #             recon_loss = recon_criterion(reconstructions, inputs)
+    #             supcon_loss = supcon_criterion(projections, labels)
+    #             total_loss = recon_loss + contrastive_weight * supcon_loss
                 
-                val_loss += total_loss.item()
+    #             val_loss += total_loss.item()
         
-        avg_train_loss = train_loss / len(train_loader)
-        avg_val_loss = val_loss / len(val_loader)
-        scheduler.step(avg_val_loss)
+    #     avg_train_loss = train_loss / len(train_loader)
+    #     avg_val_loss = val_loss / len(val_loader)
 
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), 'best_model_paper.pth')
-            print("saved model")
+    #     if avg_val_loss < best_val_loss:
+    #         best_val_loss = avg_val_loss
+    #         torch.save(model.state_dict(), 'best_model_paper.pth')
+    #         print("saved model")
         
-        print(f'Epoch [{epoch+1}/{num_epochs}]')
-        print(f'Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+    #     print(f'Epoch [{epoch+1}/{num_epochs}]')
+    #     print(f'Train Loss: {avg_train_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
     
-    model.load_state_dict(torch.load('best_model_paper.pth'))
+    model.load_state_dict(torch.load('best_model_paper_7465.pth'))
     model.eval()
-    plot_original_vs_reconstructed_with_error(model, test_loader, device)
-    # plot_tsne(model.encoder, test_loader, device)
+    # plot_original_vs_reconstructed_with_error(model, test_loader, device)
+    plot_tsne(model.encoder, test_loader, device)
     batch_size = 256
     train_dataset, val_dataset, test_dataset = load_dataset(dataset_name, '1', path)
     train_loader, val_loader, test_loader = create_data_loaders(train_dataset, val_dataset, test_dataset, batch_size)
@@ -348,8 +400,6 @@ def main(train_loader, val_loader, test_loader):
         print('-' * 50)
 
     # plt.figure(figsize=(12, 5))
-    
-
     # plt.subplot(1, 2, 1)
     # plt.plot(range(1, num_epochs+1), train_losses, label='Train Loss')
     # plt.plot(range(1, num_epochs+1), val_losses, label='Val Loss')
@@ -357,8 +407,6 @@ def main(train_loader, val_loader, test_loader):
     # plt.ylabel('Loss')
     # plt.title('Training and Validation Loss')
     # plt.legend()
-    
-
     # plt.subplot(1, 2, 2)
     # plt.plot(range(1, num_epochs+1), train_accuracies, label='Train Acc')
     # plt.plot(range(1, num_epochs+1), val_accuracies, label='Val Acc')
@@ -366,7 +414,6 @@ def main(train_loader, val_loader, test_loader):
     # plt.ylabel('Accuracy (%)')
     # plt.title('Training and Validation Accuracy')
     # plt.legend()
-    
     # plt.tight_layout()
     # plt.show()
     classifier.load_state_dict(torch.load('best_classifier_new.pth'))
@@ -413,4 +460,4 @@ if __name__ == "__main__":
     cfg = config[dataset_name]
     train_dataset, val_dataset, test_dataset = load_dataset(dataset_name, subtask_id, path)
     train_loader, val_loader, test_loader = create_data_loaders(train_dataset, val_dataset, test_dataset, batch_size)
-    main(train_loader, val_loader, test_loader)
+    main(train_loader, val_loader, test_loader, args.mnist)

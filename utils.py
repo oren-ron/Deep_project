@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 from sklearn.manifold import TSNE
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, random_split, Dataset
 from torchvision import datasets, transforms
@@ -144,7 +146,7 @@ config = {
         'ae_epochs': {
             '1': 10,
             '2': 10,
-            '3': 15
+            '3': 12
         },
         'cls_epochs': {
             '1': 20,
@@ -183,7 +185,7 @@ config = {
         'ae_epochs': {
             '1': 30,
             '2': 30,
-            '3': 12
+            '3': 9
         },
         'cls_epochs': {
             '1': 25,
@@ -246,8 +248,8 @@ def load_dataset(dataset_name, subtask_id, path):
 
 def create_data_loaders(train_dataset, val_dataset, test_dataset, batch_size):
     return (
-        DataLoader(train_dataset, batch_size=batch_size, shuffle=True),
-        DataLoader(val_dataset, batch_size=batch_size, shuffle=False),
+        DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True),
+        DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True),
         DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     )
 
@@ -266,3 +268,6 @@ def freeze_seeds(seed=0):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True 
+    torch.backends.cudnn.benchmark = False  
